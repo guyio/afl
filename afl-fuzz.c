@@ -76,13 +76,15 @@
 #  define EXP_ST static
 #endif /* ^AFL_LIB */
 
+typedef int (*MUTATORFUNC)(const char* filepath, const uint8_t* data, size_t size);
+
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
 
 
 EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
           *out_file,                  /* File to fuzz, if any             */
-          *mutator_lib,               /* so to mutate input, if any       */
+          *mutator_func,              /* function to mutate afl input     */
           *out_dir,                   /* Working & output directory       */
           *sync_dir,                  /* Synchronization directory        */
           *sync_id,                   /* Fuzzer ID                        */
@@ -2469,7 +2471,12 @@ static u8 run_target(char** argv, u32 timeout) {
 static void write_to_testcase(void* mem, u32 len) {
 
   s32 fd = out_fd;
-
+  if(mutator_func && out_file)
+  {
+     //write the testcase through a custom mutator
+     if(0 > mutator_func(out_file, mem, len)) PFATAL("Unable to create '%s'", out_file);
+     return;
+  }
   if (out_file) {
 
     unlink(out_file); /* Ignore errors. */
@@ -7719,8 +7726,11 @@ int main(int argc, char** argv) {
 
       case 'z': /* mutator shared library */
 
-        if (mutator_lib) FATAL("Multiple -z options not supported");
-        mutator_lib = optarg;
+        if (mutator_func) FATAL("Multiple -z options not supported");
+        void     *handle = dlopen(optarg, RTLD_NOW | RTLD_GLOBAL);
+        if (handle == NULL) FATAL("Can't open mutator library");
+        mutator_func = dlsym(handle, "write_test_case_from_data");
+        if (mutator_func == NULL) FATAL("Can't find mutator function in mutator library");
         break;
       case 'o': /* output dir */
 
