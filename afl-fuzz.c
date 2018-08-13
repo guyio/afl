@@ -82,6 +82,7 @@
 
 EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
           *out_file,                  /* File to fuzz, if any             */
+          *mutator_lib,               /* so to mutate input, if any       */
           *out_dir,                   /* Working & output directory       */
           *sync_dir,                  /* Synchronization directory        */
           *sync_id,                   /* Fuzzer ID                        */
@@ -2494,31 +2495,11 @@ static void write_to_testcase(void* mem, u32 len) {
 /* The same, but with an adjustable gap. Used for trimming. */
 
 static void write_with_gap(void* mem, u32 len, u32 skip_at, u32 skip_len) {
-
-  s32 fd = out_fd;
-  u32 tail_len = len - skip_at - skip_len;
-
-  if (out_file) {
-
-    unlink(out_file); /* Ignore errors. */
-
-    fd = open(out_file, O_WRONLY | O_CREAT | O_EXCL, 0600);
-
-    if (fd < 0) PFATAL("Unable to create '%s'", out_file);
-
-  } else lseek(fd, 0, SEEK_SET);
-
-  if (skip_at) ck_write(fd, mem, skip_at, out_file);
-
-  if (tail_len) ck_write(fd, mem + skip_at + skip_len, tail_len, out_file);
-
-  if (!out_file) {
-
-    if (ftruncate(fd, len - skip_len)) PFATAL("ftruncate() failed");
-    lseek(fd, 0, SEEK_SET);
-
-  } else close(fd);
-
+  char* trimmed_mem = malloc(len - skip_len);
+  memcpy(trimmed_mem, mem, skip_at); //copy start
+  memcpy(trimmed_mem + skip_at, mem + skip_at + skip_len, len - (skip_at + skip_len));
+  write_to_testcase(trimmed_mem, len - skip_len);
+  free(trimmed_mem);
 }
 
 
@@ -7723,7 +7704,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:Q")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:z:m:t:T:dnCB:S:M:x:Q")) > 0)
 
     switch (opt) {
 
@@ -7736,6 +7717,11 @@ int main(int argc, char** argv) {
 
         break;
 
+      case 'z': /* mutator shared library */
+
+        if (mutator_lib) FATAL("Multiple -z options not supported");
+        mutator_lib = optarg;
+        break;
       case 'o': /* output dir */
 
         if (out_dir) FATAL("Multiple -o options not supported");
