@@ -3274,11 +3274,18 @@ keep_as_crash:
 
   /* If we're here, we apparently want to save the crash or hang
      test case, too. */
-
-  fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
-  if (fd < 0) PFATAL("Unable to create '%s'", fn);
-  ck_write(fd, mem, len, fn);
-  close(fd);
+  if(mutator_func)
+  {
+     //write crash through a custom mutator
+     if(mutator_func(fn, mem, len) < 0) PFATAL("Unable to create '%s'", fn);
+  }
+  else
+  {
+    fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) PFATAL("Unable to create '%s'", fn);
+    ck_write(fd, mem, len, fn);
+    close(fd);
+  }
 
   ck_free(fn);
 
